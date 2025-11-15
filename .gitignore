@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.eggs/
+*.egg-info/
+dist/
+build/
+
+# Local envs
+.venv/
+venv/
+
+# Project artefacts
+models/
+zyntalic_words*.txt
+anchors.tsv
+lexicon/*.json
+
+# OS/editor
+.DS_Store
+*.swp
