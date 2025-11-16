@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import os, io, re, json
 from typing import List
-from fastapi import FastAPI, UploadFile, Form, Request
+from fastapi import FastAPI, UploadFile, File, Form, Request
 from fastapi.responses import HTMLResponse, FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -35,15 +35,16 @@ def index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.post("/translate", response_class=HTMLResponse)
-async def translate(request: Request, pdf: UploadFile = Form(...), mirror_rate: float = Form(0.8), pretty: int = Form(0)):
+async def translate(request: Request, pdf: UploadFile = File(...), mirror_rate: float = Form(0.8), pretty: str = Form("0")):
     fb = await pdf.read()
     text = extract_pdf_text(fb)
     if not text:
         return HTMLResponse("<p>No text extracted.</p>", status_code=400)
 
-    mode = "html" if pretty else "plain"
+    mode = "html" if (pretty in ["1", "true", "on"]) else "plain"
     out = generate_text(text, mode=mode, mirror_rate=mirror_rate)
 
+    # Also produce a small parallel corpus for download
     tr = ZyntalicTranslator(mirror_rate=mirror_rate)
     rows = tr.translate_text(text[:200_000])
     base = os.path.splitext(os.path.basename(pdf.filename or "book.pdf"))[0]

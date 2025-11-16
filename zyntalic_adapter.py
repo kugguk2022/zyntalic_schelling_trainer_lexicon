@@ -1,13 +1,18 @@
 # -*- coding: utf-8 -*-
 """Unified text generation adapter.
-Prefers the Zynthalic text engines; falls back to rule-based translator.
+Order of preference:
+1) zynthalic_chiasmus.translate_chiasmus (correct function per repo)
+2) zynthalic_chiasmus.translate_saramago_chiasmus (legacy/alternate)
+3) zynthalic_publisher.publish_html / publish_book (HTML)
+4) rule-based translator fallback (no embeddings dump)
 """
-from typing import Optional
 
 def generate_text(src: str, *, mode: str = "plain", mirror_rate: float = 0.8) -> str:
-    # 1) Preferred: Saramago-style chiasmus engine
+    # 1) Preferred: correct function name
     try:
         import zynthalic_chiasmus as zch
+        if hasattr(zch, "translate_chiasmus"):
+            return zch.translate_chiasmus(src)
         if hasattr(zch, "translate_saramago_chiasmus"):
             return zch.translate_saramago_chiasmus(src)
     except Exception:
