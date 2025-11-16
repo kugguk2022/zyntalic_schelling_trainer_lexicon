@@ -5,8 +5,32 @@ from fastapi import FastAPI, UploadFile, Form, Request
 from fastapi.responses import HTMLResponse, FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pypdf import PdfReader
+import sys
+import os
+try:
+    # Try the modern library first
+    from pypdf import PdfReader
+except ImportError:
+    try:
+        # Fallback to the older PyPDF2 v3.0+
+        from PyPDF2 import PdfReader
+    except ImportError:
+        # Fallback to the ancient PyPDF2 pre-v3.0 (renaming required)
+        from PyPDF2 import PdfFileReader as PdfReader
 
+
+# Add the parent directory (root of the repo) to sys.path
+# This allows you to import zyntalic_core without copying it!
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path.append(parent_dir)
+
+# Now you can import the core module safely
+try:
+    import zyntalic_core
+except ImportError as e:
+    print("CRITICAL ERROR: Could not import zyntalic_core. Make sure you are running this from the webapp directory.")
+    raise e
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_DIR = os.path.join(REPO_ROOT, "outputs")
 os.makedirs(OUT_DIR, exist_ok=True)
