@@ -10,13 +10,27 @@ build/
 # Local envs
 .venv/
 venv/
+env/
 
 # Project artefacts
 models/
+outputs/
 zyntalic_words*.txt
 anchors.tsv
+
+# Lexicon data (keep template structure but ignore generated)
 lexicon/*.json
 
 # OS/editor
 .DS_Store
 *.swp
+*.code-workspace
+.vscode/
+
+# Generated/temporary files
+*.log
+*.tmp
+*.tsv
+*.jsonl
+zynthalic_translation.txt
+Codex_Page_1.html

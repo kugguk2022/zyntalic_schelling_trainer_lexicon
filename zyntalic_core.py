@@ -24,6 +24,17 @@ POLISH_CONSONANTS = "bcćdđfghjklłmnńprsśtvwzźż"
 POLISH_VOWELS     = "aąeęioóuy"
 
 def compose_hangul_block(ch: str, ju: str, jo: str) -> str:
+    """
+    Compose a Hangul syllable block from choseong, jungseong, and jongseong.
+    
+    Args:
+        ch: Choseong (initial consonant)
+        ju: Jungseong (vowel)
+        jo: Jongseong (final consonant)
+        
+    Returns:
+        Composed Hangul syllable or concatenated string if composition fails
+    """
     LCount, VCount, TCount = 19, 21, 28
     SBase = 0xAC00
     try:
@@ -35,13 +46,27 @@ def compose_hangul_block(ch: str, ju: str, jo: str) -> str:
     SIndex = (L * VCount + V) * TCount + T
     return chr(SBase + SIndex)
 
+
 def swap_vowel(v: str) -> str:
+    """Swap vowel for stylistic variation."""
     return "ㅑ" if v == "ㅏ" else v
 
+
 def fuse_syllables(root: str, marker: str) -> str:
+    """Fuse syllables with marker for morphological variation."""
     return root + marker
 
+
 def lemmatize(word: str) -> str:
+    """
+    Remove common suffixes to extract lemma.
+    
+    Args:
+        word: Zyntalic word to lemmatize
+        
+    Returns:
+        Base form of the word
+    """
     suffixes = ["ㅆ","었","ś","ął","ㅇ","ł"]
     for s in suffixes:
         if word.endswith(s):

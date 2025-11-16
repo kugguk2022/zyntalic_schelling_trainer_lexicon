@@ -89,7 +89,7 @@ class ZyntalicTranslator:
 
         lemma = z_words[0] if z_words else "ø"
         pos_hint = self._pos_hint_for_word(lemma)
-        ctx = make_context(lemma, list(zip(anchors,weights)), pos_hint)
+        ctx = make_context(lemma, anchors, pos_hint)
 
         out_sent = f"{z_surface}. {core_line} {ctx}"
         return {"source": sent.strip(), "target": out_sent, "anchors": aw}

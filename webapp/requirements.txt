@@ -1,7 +1,20 @@
 fastapi==0.115.2
 uvicorn==0.30.6
 pypdf==5.1.0
-numpy>=1.24
+# Core Zyntalic dependencies
+numpy>=1.24.0
+
+# Web framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+jinja2>=3.1.2
+
+# PDF processing (optional)
+pypdf>=3.17.0
+
+# Development tools
+ruff>=0.1.0
 jinja2>=3.1
 flask
 numpy

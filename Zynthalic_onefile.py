@@ -6,7 +6,7 @@ Single-file English → Zynthalic translator.
 - Exposes: CLI and FastAPI (uvicorn zynthalic_onefile:app --reload)
 """
 
-import io, re, sys, json, random
+import io, re, sys, json, random, hashlib
 
 # ---------- PREFERRED ENGINE ----------
 def _preferred_translate(text: str) -> str:
@@ -146,6 +146,43 @@ def _sentences(text: str):
 
 def _tokens(s: str):
     return _WORDS.findall(s)
+
+def _fallback_base_embedding(s: str, dim: int = 300):
+    """Deterministic pseudo-embedding using source text hash as RNG seed."""
+    data = (s or "").encode("utf-8")
+    digest = hashlib.blake2b(data, digest_size=16).digest()
+    seed = int.from_bytes(digest, "big")
+    rng = random.Random(seed)
+    return [rng.random() for _ in range(dim)]
+
+def _fallback_anchor_weights_for_vec(v, top_k: int = 3):
+    """Generates reproducible anchor weights from the embedding vector."""
+    anchors = [
+        "Homer_Iliad",
+        "Homer_Odyssey",
+        "Plato_Republic",
+        "Shakespeare_Hamlet",
+        "Dante_Inferno",
+        "Darwin_Origin",
+        "Borges_Labyrinths",
+        "Woolf_Waves",
+    ]
+    total = sum(v) if v else 0.0
+    seed = int(abs(total) * 1_000_000)
+    rng = random.Random(seed)
+    weights = [rng.random() for _ in anchors]
+    norm = sum(weights) or 1.0
+    pairs = [(a, w / norm) for a, w in zip(anchors, weights)]
+    pairs.sort(key=lambda x: x[1], reverse=True)
+    return pairs[:top_k]
+
+def _fallback_generate_word():
+    """Creates a Hangul+Latin token for Codex UI when core module missing."""
+    c1 = random.choice(CHOSEONG)
+    v1 = random.choice(VOWELS)
+    c2 = random.choice(CHOSEONG)
+    suf = random.choice(SUFFIXES)
+    return f"{c1}{v1}{c2}{suf}"
 
 # engines (we’ll try to use real core if available)
 def _core_funcs():
