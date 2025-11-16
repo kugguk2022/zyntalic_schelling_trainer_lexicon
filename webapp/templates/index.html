@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<form action="/translate" method="post" enctype="multipart/form-data" class="card">
+  <label>PDF:</label>
+  <input type="file" name="pdf" accept="application/pdf" required>
+  <label>Mirror rate (0..1):</label>
+  <input type="number" name="mirror_rate" step="0.05" min="0" max="1" value="0.8">
+  <label>Pretty HTML (publisher):</label>
+  <input type="checkbox" name="pretty" value="1">
+  <button type="submit">Translate</button>
+</form>
+{% endblock %}
