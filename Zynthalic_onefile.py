@@ -21,56 +21,99 @@ def _preferred_translate(text: str) -> str:
     return ""
 
 # ---------- FALLBACK (rule-based) ----------
-CHOSEONG = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ"
-_SENT_SPLIT = re.compile(r"(?<=[.!?])\s+|\n+")
+# ---------- DETERMINISTIC RULE-BASED FALLBACK ----------
+# We use a specific seed per word so "Time" always translates to the same Zyntalic token.
 
-def _fallback_make_context(lemma, anchors, pos_hint):
+CHOSEONG = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ"
+VOWELS = "ᅡᅢᅣᅤᅥᅦᅧᅨᅩᅪᅫᅬᅭᅮᅯᅞᅱᅲᅳᅴᅵ"
+# Polish-ish suffixes for style
+SUFFIXES = ["sk", "ov", "icz", "zy", "a", "um"] 
+
+def _deterministic_word(word: str) -> str:
+    """
+    Generates a Zyntalic token based on the hash of the English word.
+    This ensures consistency: 'Love' is always the same token.
+    """
+    if not word: return "ø"
+    
+    # Seed the random generator with the word itself
+    # This removes the "randomness" across reloads
+    r = random.Random(word.lower())
+    
+    # 1. Generate a Hangul base
+    c1 = r.choice(CHOSEONG)
+    v1 = r.choice(VOWELS)
+    c2 = r.choice(CHOSEONG)
+    # 2. Generate a Latin suffix style
+    suf = r.choice(SUFFIXES)
+    
+    return f"{c1}{v1}{c2}{suf}"
+
+def _identify_structure(sent: str):
+    """
+    Naively identifies two pivot words (A and B) for the chiasmus.
+    """
+    # Filter for likely nouns (length > 3)
+    words = [w for w in re.findall(r"[A-Za-z]+", sent) if len(w) > 3]
+    if len(words) >= 2:
+        return words[0], words[-1] # First and Last "significant" words
+    elif len(words) == 1:
+        return words[0], "Void"
+    return "Self", "Other"
+
+def _deterministic_anchor_select(sent: str):
+    """
+    Hashes the sentence to pick a 'Cultural Anchor' consistently.
+    """
+    anchors = ["Homer_Iliad", "Homer_Odyssey", "Plato_Republic", "Shakespeare_Hamlet", "Dante_Inferno", "Darwin_Origin"]
+    # Sum the byte values of the string to get a consistent index
+    val = sum(ord(c) for c in sent)
+    
+    # Pick top 2 anchors based on modulo math
+    primary = anchors[val % len(anchors)]
+    secondary = anchors[(val * 3) % len(anchors)]
+    return [primary, secondary]
+
+def _make_context_string(lemma, anchors, pos_hint):
     labs = ";".join(anchors)
     return f"⟦ctx: lemma={lemma}; pos≈{pos_hint}; anchors={labs}⟧"
-
-def _fallback_generate_word():
-    return "".join(random.choice(CHOSEONG) for _ in range(3))
-
-def _fallback_base_embedding(s: str, dim: int = 64):
-    r = random.Random(hash(s) & 0xFFFFFFFF)
-    return [r.random() for _ in range(dim)]
-
-def _fallback_anchor_weights_for_vec(v, top_k=3):
-    names = ["Homer_Iliad", "Homer_Odyssey", "Plato_Rep", "Shakespeare", "Dante", "Darwin"]
-    r = random.Random(int(sum(v) * 1e6) & 0xFFFFFFFF)
-    ws = [r.random() for _ in names]
-    S = sum(ws) or 1.0
-    pairs = list(zip(names, [w / S for w in ws]))
-    pairs.sort(key=lambda x: x[1], reverse=True)
-    return pairs[:top_k]
-
-def _fallback_plain_line(anchor_names, weights):
-    return "The thread turns once more; the witness remains."
-
-def _fallback_mirrored_line(anchor_names, weights):
-    A = anchor_names[0] if anchor_names else "order"
-    B = anchor_names[1] if len(anchor_names) > 1 else "chaos"
-    return f"To {A} through {B}; to {B} through {A}."
 
 def _fallback_translate(text: str, mirror_rate: float = 0.8) -> str:
     parts = [p.strip() for p in _SENT_SPLIT.split(text) if p and p.strip()]
     out = []
+    
     for sent in parts:
-        v = _fallback_base_embedding(sent)
-        aw = _fallback_anchor_weights_for_vec(v, top_k=3)
-        anchor_names = [a for a, _ in aw]
-        weights = [w for _, w in aw]
-        # surface tokens
-        toks = re.findall(r"[A-Za-zÀ-ÖØ-öø-ÿ]+", sent)
-        z_words = [_fallback_generate_word() for _ in toks]
-        z_surface = " ".join(z_words) if z_words else _fallback_plain_line(anchor_names, weights)
-        # core mirrored vs plain
-        core = _fallback_mirrored_line(anchor_names, weights) if random.random() < mirror_rate else _fallback_plain_line(anchor_names, weights)
-        # context at end
-        lemma = z_words[0] if z_words else "ø"
-        pos_hint = "noun" if any(ch in lemma for ch in CHOSEONG) else "verb"
-        ctx = _fallback_make_context(lemma, anchor_names, pos_hint)
+        # 1. Identify Structure (A and B)
+        subj_a, subj_b = _identify_structure(sent)
+        
+        # 2. Convert English words to Deterministic Zyntalic Tokens
+        eng_tokens = re.findall(r"[A-Za-zÀ-ÖØ-öø-ÿ]+", sent)
+        z_words = [_deterministic_word(w) for w in eng_tokens]
+        
+        # Construct Surface Line
+        z_surface = " ".join(z_words)
+        
+        # 3. Construct Mirrored Core (The Chiasmus)
+        # "To A is B; To B is A"
+        token_a = _deterministic_word(subj_a)
+        token_b = _deterministic_word(subj_b)
+        
+        # Determine if we mirror based on user rate (deterministic per sentence length to avoid flickering)
+        is_mirrored = (len(sent) % 100) / 100.0 <= mirror_rate
+        
+        if is_mirrored and subj_a != subj_b:
+            # The Mirror: "A implies B / B implies A"
+            core = f"{token_a} → {token_b} || {token_b} ↵ {token_a}"
+        else:
+            # Plain reflection
+            core = f"{token_a} remains {token_a}"
+
+        # 4. Context
+        anchors = _deterministic_anchor_select(sent)
+        ctx = _make_context_string(eng_tokens[0] if eng_tokens else "?", anchors, "mixed")
+        
         out.append(f"{z_surface}. {core} {ctx}")
+        
     return "\n".join(out)
 
 def translate(text: str, mirror_rate: float = 0.8) -> str:
