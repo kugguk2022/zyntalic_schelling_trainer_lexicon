@@ -23,5 +23,10 @@ except ModuleNotFoundError as exc:  # pragma: no cover - defensive guard
 
 # Mirror every attribute (FastAPI app, CLI entry point, helpers, etc.).
 _this_module = _sys.modules[__name__]
-_this_module.__dict__.update(_canonical.__dict__)
+_module_dict = _this_module.__dict__
+_module_dict.update(_canonical.__dict__)
+_module_dict["__canonical_module__"] = _canonical  # discoverability hint
 
+# Avoid leaking shim-only symbols so dir()/autocomplete stay tidy.
+for _shim_name in ("_import_module", "_CANONICAL_NAME", "_canonical", "_this_module", "_module_dict", "_sys"):
+    globals().pop(_shim_name, None)
