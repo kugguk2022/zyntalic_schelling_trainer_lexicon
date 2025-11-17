@@ -1,5 +1,6 @@
 def test_imports():
     import importlib
+    importlib.import_module("zyntalic_translator")
     importlib.import_module("zyntalic_cli")
     importlib.import_module("zyntalic_core")
 
@@ -16,9 +17,9 @@ def test_basic_translation():
 def test_translator():
     import sys
     sys.path.append("webapp")
-    from translator import ZyntalicTranslator
+    from zyntalic_translator import ZyntalicTranslator
 
-    tr = zyntalicTranslator(mirror_rate=0.8)
+    tr = ZyntalicTranslator(mirror_rate=0.8)
     result = tr.translate_text("Hello world.")
 
     assert isinstance(result, list)
