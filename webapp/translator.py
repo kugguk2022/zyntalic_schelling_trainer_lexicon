@@ -73,26 +73,59 @@ class ZyntalicTranslator:
             return "The path curves gently, and the witness remains."
 
     def translate_sentence(self, sent: str) -> Dict:
-        aw = self.sentence_to_anchors(sent, top_k=3)
-        anchors = [a for a,_ in aw]
-        weights = [w for _,w in aw]
+        """
+        Translate a single English sentence into Zyntalic.
 
-        toks = self._tokenize_words(sent)
-        z_words = [self.map_token(t) for t in toks]
-        z_surface = " ".join(z_words) if z_words else self._plain_line(list(zip(anchors,weights)), weights)
+        New behaviour:
+        - Try to parse English into Subject/Object/Verb/Context (S-O-V-C).
+        - Apply Hungarian-style plural & French-style tense marking.
+        - If anything fails, fall back to plain token mapping.
+        """
+        sent = (sent or "").strip()
+        if not sent:
+            return {"source": "", "target": "", "anchors": []}
 
+        # Anchors at sentence level (Schelling points)
+        anchors = self.sentence_to_anchors(sent, top_k=3)
+        weights = [w for _, w in anchors]
+
+        # 1) Try new syntax-aware pipeline
+        z_surface = None
+        try:
+            from english_parser import parse_sentence
+            from zyntalic_syntax import to_zyntalic_order
+
+            parsed = parse_sentence(sent)
+            z_surface = to_zyntalic_order(parsed, self.map_token)
+        except Exception:
+            z_surface = None
+
+        # 2) Fallback: old behaviour (bag-of-words -> random mapping)
+        if not z_surface:
+            toks = self._tokenize_words(sent)
+            z_words = [self.map_token(t) for t in toks]
+            if z_words:
+                z_surface = " ".join(z_words)
+            else:
+                z_surface = self._plain_line(list(zip(anchors, weights)), weights)
+            lemma = z_words[0] if z_words else "ø"
+        else:
+            # lemma for tooltip / context: first Zyntalic token
+            lemma = z_surface.split()[0] if z_surface.split() else "ø"
+
+        # Mirror / plain core line (semantic commentary)
         import random
         if random.random() < self.mirror_rate:
-            core_line = self._mirrored_line(list(zip(anchors,weights)), weights)
+            core_line = self._mirrored_line(list(zip(anchors, weights)), weights)
         else:
-            core_line = self._plain_line(list(zip(anchors,weights)), weights)
+            core_line = self._plain_line(list(zip(anchors, weights)), weights)
 
-        lemma = z_words[0] if z_words else "ø"
         pos_hint = self._pos_hint_for_word(lemma)
         ctx = make_context(lemma, anchors, pos_hint)
 
         out_sent = f"{z_surface}. {core_line} {ctx}"
-        return {"source": sent.strip(), "target": out_sent, "anchors": aw}
+        return {"source": sent, "target": out_sent, "anchors": anchors}
+
 
     def translate_text(self, text: str) -> List[Dict]:
         parts = [p.strip() for p in _SENT_SPLIT.split(text) if p and p.strip()]

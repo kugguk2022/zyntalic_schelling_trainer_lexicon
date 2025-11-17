@@ -14,6 +14,10 @@ try:
     import numpy as np
 except Exception:
     np = None
+try:
+    from zyntalic_embeddings import embed_text
+except Exception:
+    embed_text = None
 
 # -------------------- Alphabet --------------------
 CHOSEONG = ["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"]
@@ -281,6 +285,49 @@ def generate_embedding(word: str, dim: int = 300, W=None):
         canon = _normalize(_mix(vecs, ws))
     aw = anchor_weights_for_vec(canon, top_k=3)
     return canon, aw
+
+def _det_seed(text: str) -> int:
+    import hashlib
+    h = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return int(h[:8], 16)
+
+
+def _det_vec(tag: str, dim: int = 300):
+    rng = random.Random(_det_seed(tag))
+    return [rng.random() for _ in range(dim)]
+
+
+def _build_anchor_vecs(dim: int = 300) -> Dict[str, List[float]]:
+    """
+    Build anchor vectors as true Schelling points:
+    - If a real embedder exists, embed the canonical work name.
+    - Otherwise, fall back to deterministic RNG.
+    """
+    vecs: Dict[str, List[float]] = {}
+    for name in ANCHORS:
+        label_text = name.replace("_", " ")
+        if embed_text is not None:
+            v = embed_text(label_text, dim=dim)
+        else:
+            v = _det_vec(name, dim=dim)
+        vecs[name] = _normalize(v)
+    return vecs
+
+
+ANCHOR_VECS = _build_anchor_vecs(dim=300)
+
+
+def base_embedding(key: str, dim: int = 300):
+    """
+    Base embedding for any key (word, lemma, sentence).
+    - Prefer real embeddings from zyntalic_embeddings.embed_text.
+    - Fallback: deterministic RNG based on hash.
+    """
+    if embed_text is not None:
+        return embed_text(key, dim=dim)
+    rng = random.Random(_det_seed(key))
+    return [rng.random() for _ in range(dim)]
+
 
 # -------------------- Public generation --------------------
 def generate_entry(mirror_rate: float = 0.8, W=None) -> Dict:
