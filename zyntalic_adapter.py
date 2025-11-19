@@ -18,17 +18,12 @@ def generate_text(src: str, *, mode: str = "plain", mirror_rate: float = 0.8) ->
     except Exception:
         pass
 
-<<<<<<< HEAD
-    # 2) Pretty publisher HTML (if requested)
-=======
     # 2) optional: pretty publisher HTML
->>>>>>> d6f648f830b9d441ce91cc3c0d7ab4342ce70760
     if mode == "html":
         try:
             import zynthalic_publisher as pub
             if hasattr(pub, "publish_html"):
                 return pub.publish_html(src)
-<<<<<<< HEAD
             if hasattr(pub, "publish_book"):
                 out = pub.publish_book(src, filename=None)
                 if isinstance(out, str):
@@ -36,26 +31,12 @@ def generate_text(src: str, *, mode: str = "plain", mirror_rate: float = 0.8) ->
         except Exception:
             pass
 
-    # 3) Rule-based fallback
+    # 3) fallback: rule-based translator (no embeddings UI noise)
     try:
         from webapp.translator import ZyntalicTranslator
         tr = ZyntalicTranslator(mirror_rate=mirror_rate)
         rows = tr.translate_text(src)
         return "\n".join(r["target"] for r in rows)
     except Exception:
-=======
-            if hasattr(pub, "publish_book"):  # fallback if publish_html not present
-                return pub.publish_book(src, filename=None)  # ensure it returns a string
-        except Exception:
-            pass
-
-    # 3) fallback: rule-based translator (no embeddings UI noise)
-    try:
-        from webapp.translator import ZyntalicTranslator
-        tr = ZyntalicTranslator(mirror_rate=0.8)
-        rows = tr.translate_text(src)
-        return "\n".join(r["target"] for r in rows)
-    except Exception:
         # last resort: return the raw text
->>>>>>> d6f648f830b9d441ce91cc3c0d7ab4342ce70760
         return src
