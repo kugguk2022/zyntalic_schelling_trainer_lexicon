@@ -1,3 +1,5 @@
+from utils.rng import get_rng # Import our new tool
+
 # -*- coding: utf-8 -*-
 """
 Zyntalic Core (Schelling-anchored, Lexicon-aware)
