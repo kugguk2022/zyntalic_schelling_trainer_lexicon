@@ -34,3 +34,4 @@ lexicon/*.json
 *.jsonl
 zynthalic_translation.txt
 Codex_Page_1.html
+*.pyc
