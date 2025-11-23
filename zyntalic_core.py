@@ -8,6 +8,8 @@ Zyntalic Core (Schelling-anchored, Lexicon-aware)
 import os
 import json
 import math
+from zyntalic_syntax import ParsedSentence, to_zyntalic_order
+
 from typing import List, Dict, Optional, Tuple
 
 # --- 1. THE GOLDEN KEY: Import the Deterministic RNG Tool ---
@@ -165,19 +167,19 @@ def _mix(vecs, weights):
     return out
 
 # -------------------- Deterministic Syllables --------------------
-def create_hangul_syllable(rng) -> str:
-    ch = rng.choice(CHOSEONG)
-    ju = swap_vowel(rng.choice(JUNGSEONG)) if rng.random() < 0.25 else rng.choice(JUNGSEONG)
-    jo = rng.choice(JONGSEONG)
-    return compose_hangul_block(ch, ju, jo)
+#def create_hangul_syllable(rng) -> str:
+#    ch = rng.choice(CHOSEONG)
+#    ju = swap_vowel(rng.choice(JUNGSEONG)) if rng.random() < 0.25 else rng.choice(JUNGSEONG)
+#    jo = rng.choice(JONGSEONG)
+#    return compose_hangul_block(ch, ju, jo)
 
-def create_latin_syllable(rng) -> str:
+#def create_latin_syllable(rng) -> str:
     c = rng.choice(POLISH_CONSONANTS)
-    v = rng.choice(POLISH_VOWELS)
-    tail = rng.choice(["", rng.choice(POLISH_CONSONANTS)])
-    return c+v+tail
+#    v = rng.choice(POLISH_VOWELS)
+#    tail = rng.choice(["", rng.choice(POLISH_CONSONANTS)])
+#    return c+v+tail
 
-def create_syllable(rng, pos="noun") -> str:
+# def create_syllable(rng, pos="noun") -> str:
     r = rng.random()
     if pos == "noun":
         return create_hangul_syllable(rng) if r < 0.85 else create_latin_syllable(rng)
@@ -185,16 +187,32 @@ def create_syllable(rng, pos="noun") -> str:
         return create_latin_syllable(rng) if r < 0.85 else create_hangul_syllable(rng)
     return create_hangul_syllable(rng) if r < 0.5 else create_latin_syllable(rng)
 
+# def generate_word(seed_key: str) -> str:
+#    """Generate Zyntalic word deterministically from a seed string."""
+#    rng = get_rng(seed_key)
+#    sylls = [
+#        create_syllable(rng, pos=rng.choice(["noun","verb"])),
+#        create_syllable(rng, pos=rng.choice(["noun","verb"])),
+#        create_syllable(rng, pos=rng.choice(["noun","verb"]))
+#    ]
+#    if rng.random() < 0.3:
+#        sylls[1] = fuse_syllables(sylls[1], rng.choice(["ł","ㅆ","ś","ㅇ"]))
+#    return "".join(sylls)
+def create_syllable(rng, pos: str = "noun") -> str:
+    """
+    Core Zyntalic syllable for *surface* words: Polish alphabet only.
+    Hangul is reserved for the final context block.
+    """
+    return create_latin_syllable(rng)
+
+
 def generate_word(seed_key: str) -> str:
-    """Generate Zyntalic word deterministically from a seed string."""
+    """Generate Zyntalic word deterministically from a seed string (Polish-only surface)."""
     rng = get_rng(seed_key)
-    sylls = [
-        create_syllable(rng, pos=rng.choice(["noun","verb"])),
-        create_syllable(rng, pos=rng.choice(["noun","verb"])),
-        create_syllable(rng, pos=rng.choice(["noun","verb"]))
-    ]
+    sylls = [create_latin_syllable(rng) for _ in range(3)]
     if rng.random() < 0.3:
-        sylls[1] = fuse_syllables(sylls[1], rng.choice(["ł","ㅆ","ś","ㅇ"]))
+        # only Latin diacritic suffixes here
+        sylls[1] = fuse_syllables(sylls[1], rng.choice(["ł", "ś"]))
     return "".join(sylls)
 
 # -------------------- Sentence Templates --------------------
@@ -227,11 +245,26 @@ def plain_sentence_anchored(rng, anchors, weights) -> str:
     
     return f"A {adj} {noun} {verb} itself."
 
+# -------------------Korean tail ------------------------
+def make_korean_tail(seed_key: str) -> str:
+    """Deterministic Hangul-only tail used only in the final context block."""
+    rng = get_rng(f"kctx::{seed_key}")
+    sylls = [create_hangul_syllable(rng) for _ in range(2)]
+    if rng.random() < 0.5:
+        sylls.append(create_hangul_syllable(rng))
+    return "".join(sylls)
+
+
 # -------------------- Context Block --------------------
-def make_context(word: str, chosen_anchors: List[str], pos_hint: str) -> str:
+#def make_context(word: str, chosen_anchors: List[str], pos_hint: str) -> str:
+#    lemma = lemmatize(word)
+#    ctx_anchors = "|".join(chosen_anchors)
+#    return f"⟦ctx: lemma={lemma}; pos≈{pos_hint}; anchors={ctx_anchors}⟧"
+def make_context(seed_key: str, word: str, chosen_anchors: List[str], pos_hint: str) -> str:
     lemma = lemmatize(word)
     ctx_anchors = "|".join(chosen_anchors)
-    return f"⟦ctx: lemma={lemma}; pos≈{pos_hint}; anchors={ctx_anchors}⟧"
+    han = make_korean_tail(seed_key)
+    return f"⟦han={han}; lemma={lemma}; pos≈{pos_hint}; anchors={ctx_anchors}⟧"
 
 # -------------------- Embeddings --------------------
 def base_embedding(key: str, dim: int = 300):
@@ -315,7 +348,8 @@ def generate_entry(seed_word: str, mirror_rate: float = 0.8, W=None) -> Dict:
         sent_core = plain_sentence_anchored(rng, chosen, weights)
     
     # 4. Context
-    sentence = f"{sent_core} {make_context(w, chosen, pos_hint)}"
+#    sentence = f"{sent_core} {make_context(w, chosen, pos_hint)}"
+     sentence = f"{sent_core} {make_context(seed_word, w, chosen, pos_hint)}"
     
     return {
         "word": w, 
