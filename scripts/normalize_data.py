@@ -1,5 +1,4 @@
-# Create the normalization script
-cat > scripts/normalize_data.py << 'EOF'
+
 import json
 import re
 import sys
@@ -68,6 +67,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-EOF
 
-python scripts/normalize_data.py

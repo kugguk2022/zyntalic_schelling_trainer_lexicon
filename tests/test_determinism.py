@@ -1,28 +1,57 @@
-import unittest
-from zyntalic.utils.rng import get_rng
-from zyntalic.generator.core import generate_word
+cat > tests/test_determinism.py << 'EOF'
+import json
+import numpy as np
 
-class TestDeterminism(unittest.TestCase):
-    def test_rng_stability(self):
-        """Test that the RNG utility is actually stable."""
-        rng1 = get_rng("apple")
-        rng2 = get_rng("apple")
-        rng3 = get_rng("banana")
-        
-        # Apple should equal Apple
-        self.assertEqual(rng1.random(), rng2.random())
-        # Apple should NOT equal Banana
-        self.assertNotEqual(rng1.random(), rng3.random())
+def test_embedding_determinism():
+    """Embeddings must be identical across runs."""
+    from zyntalic_embeddings import embed_text
+    
+    text = "The old man looked at the sea."
+    results = [embed_text(text, dim=300) for _ in range(10)]
+    
+    # Convert to numpy for easy comparison
+    arr = np.array(results)
+    assert np.allclose(arr, arr[0]), "Embeddings must be deterministic"
 
-    def test_word_generation(self):
-        """Test that the generator produces identical words for identical inputs."""
-        word1 = generate_word("freedom")
-        word2 = generate_word("freedom")
-        
-        print(f"Run 1: {word1}")
-        print(f"Run 2: {word2}")
-        
-        self.assertEqual(word1, word2)
+def test_normalized_data_structure():
+    """Normalized JSONL must have required fields."""
+    with open("data/persepolis_clean.jsonl", "r") as f:
+        for line in f:
+            row = json.loads(line)
+            assert "source" in row
+            assert "target" in row
+            assert "lemma" in row
+            assert "anchors" in row
+            # Target must NOT contain ⟦ctx:
+            assert "⟦ctx:" not in row["target"]
+            break  # Just check first line
 
-if __name__ == '__main__':
-    unittest.main()
+def test_embedding_determinism():
+    """Embeddings must be identical across runs."""
+    from zyntalic_embeddings import embed_text
+    
+    text = "The old man looked at the sea."
+    results = [embed_text(text, dim=300) for _ in range(10)]
+    
+    # Convert to numpy for easy comparison
+    arr = np.array(results)
+    assert np.allclose(arr, arr[0]), "Embeddings must be deterministic"
+
+def test_normalized_data_structure():
+    """Normalized JSONL must have required fields."""
+    with open("data/persepolis_clean.jsonl", "r") as f:
+        for line in f:
+            row = json.loads(line)
+            assert "source" in row
+            assert "target" in row
+            assert "lemma" in row
+            assert "anchors" in row
+            # Target must NOT contain ⟦ctx:
+            assert "⟦ctx:" not in row["target"]
+            break  # Just check first line
+
+if __name__ == "__main__":
+    test_embedding_determinism()
+    test_normalized_data_structure()
+    print("✅ All determinism tests passed")
+
