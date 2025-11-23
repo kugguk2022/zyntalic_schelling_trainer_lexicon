@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <div class="actions">
+    {% if tsv_url %}<a class="btn" href="{{ tsv_url }}">Download TSV</a>{% endif %}
+    {% if jsonl_url %}<a class="btn" href="{{ jsonl_url }}">Download JSONL</a>{% endif %}
+  </div>
+  <div class="book">
+    {{ content|safe }}
+  </div>
+</div>
+{% endblock %}

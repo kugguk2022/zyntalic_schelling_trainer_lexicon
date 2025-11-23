@@ -1,186 +1,150 @@
-import re
-import random
+# -*- coding: utf-8 -*-
 import hashlib
-import os
-import json
+import re
+from typing import Dict, List, Tuple
 
-# ---------------------------------------------------------
-# 1. CORE ALPHABET & SYLLABLE LOGIC
-# ---------------------------------------------------------
-CHOSEONG = ["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"]
-JUNGSEONG = ["ㅏ","ㅐ","ㅑ","ㅒ","ㅓ","ㅔ","ㅕ","ㅖ","ㅗ","ㅘ","ㅙ","ㅚ","ㅛ","ㅜ","ㅝ","ㅞ","ㅟ","ㅠ","ㅡ","ㅢ","ㅣ"]
-JONGSEONG = ["","ㄱ","ㄲ","ㄳ","ㄴ","ㄵ","ㄶ","ㄷ","ㄹ","ㄺ","ㄻ","ㄼ","ㄽ","ㄾ","ㄿ","ㅀ","ㅁ","ㅂ","ㅄ","ㅅ","ㅆ","ㅇ","ㅈ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"]
-
-POLISH_CONSONANTS = "bcćdđfghjklłmnńprsśtvwzźż"
-POLISH_VOWELS     = "aąeęioóuy"
-
-def deterministic_seed(word):
-    """Turn an English word into a specific number seed."""
-    h = hashlib.sha256(word.encode("utf-8")).hexdigest()
-    return int(h[:8], 16)
-
-def compose_hangul(seed, idx):
-    random.seed(seed + idx)
-    c = random.choice(CHOSEONG)
-    v = random.choice(JUNGSEONG)
-    t = random.choice(JONGSEONG)
-    # Hangul Composition Math
-    base = 0xAC00
-    ci, vi, ti = CHOSEONG.index(c), JUNGSEONG.index(v), JONGSEONG.index(t)
-    return chr(base + (ci * 21 + vi) * 28 + ti)
-
-def compose_latin(seed, idx):
-    random.seed(seed + idx)
-    c = random.choice(POLISH_CONSONANTS)
-    v = random.choice(POLISH_VOWELS)
-    t = random.choice(["", random.choice(POLISH_CONSONANTS)])
-    return c + v + t
-
-def get_zynthalic_word(english_word):
-    """
-    Translates English -> Zynthalic.
-    'Love' will ALWAYS return the same Zynthalic string.
-    """
-    w = english_word.lower()
-    seed = deterministic_seed(w)
-    rng = random.Random(seed)
-    
-    # Determine length (2 or 3 syllables usually)
-    length = rng.choice([2, 2, 3])
-    
-    syllables = []
-    for i in range(length):
-        # 50/50 chance of Hangul vs Polish for each syllable
-        if rng.random() > 0.5:
-            syllables.append(compose_hangul(seed, i))
-        else:
-            syllables.append(compose_latin(seed, i))
-            
-    # Fuse them
-    word = "".join(syllables)
-    
-    # Capitalize if original was capitalized
-    if english_word[0].isupper():
-        word = word.capitalize() # Only works on Latin parts, but good enough
-        
-    return word
-
-# ---------------------------------------------------------
-# 2. DICTIONARY BUILDER
-# ---------------------------------------------------------
-DICTIONARY = {}
-
-def load_anchors():
-    """Loads the JSON files we built earlier to add 'Flavor' text."""
-    anchors = {}
-    lex_dir = "lexicon"
-    if not os.path.exists(lex_dir): return {}
-    
-    for f in os.listdir(lex_dir):
-        if f.endswith(".json"):
-            with open(os.path.join(lex_dir, f), 'r', encoding='utf-8') as file:
-                anchors[f.replace(".json", "")] = json.load(file)
-    return anchors
-
-ANCHOR_DATA = load_anchors()
-
-def get_definition_flavor(english_word):
-    """
-    Finds which Ancient Books contain this word to create a 'history'.
-    """
-    found_in = []
-    w = english_word.lower()
-    for book, data in ANCHOR_DATA.items():
-        if w in data.get("nouns", []) or w in data.get("verbs", []) or w in data.get("adjectives", []):
-            found_in.append(book)
-    
-    if not found_in:
-        return "A Neologism; concept not found in the Ancient Anchors."
-    
-    # Pick 2 random books
-    refs = random.sample(found_in, min(2, len(found_in)))
-    return f"Rooted in {', '.join(refs)}."
-
-# ---------------------------------------------------------
-# 3. TRANSLATOR LOGIC
-# ---------------------------------------------------------
-def translate_text(text):
-    """
-    Parses text, translates words, preserves punctuation.
-    """
-    # Split by keeping delimiters (punctuation, spaces)
-    tokens = re.split(r'(\W+)', text)
-    translated_tokens = []
-    
-    for t in tokens:
-        if t.strip() and t.replace("'", "").isalpha():
-            # It's a word
-            z_word = get_zynthalic_word(t)
-            translated_tokens.append(z_word)
-            
-            # Add to dictionary
-            if t.lower() not in DICTIONARY:
-                DICTIONARY[t.lower()] = {
-                    "zyn": z_word,
-                    "etymology": get_definition_flavor(t)
-                }
-        else:
-            # It's punctuation or space
-            translated_tokens.append(t)
-            
-    return "".join(translated_tokens)
-
-# Simple class wrapper for compatibility with web app translator behaviour.
 try:
-    from webapp.translator import ZyntalicTranslator as _WebTranslator
+    from zyntalic_core import (
+        CHOSEONG,
+        anchor_weights_for_vec,
+        base_embedding,
+        generate_word,
+        make_context,
+    )
+    try:
+        from zyntalic.utils.rng import get_rng
+    except Exception:
+        from utils.rng import get_rng  # type: ignore
 except Exception:
-    _WebTranslator = None
+    import random
+
+    CHOSEONG = "BCDFGHJKLMNPQRSTVWXYZ"
+
+    def get_rng(seed_input: str = "fallback"):
+        h = hashlib.sha256(seed_input.encode("utf-8")).hexdigest()
+        return random.Random(int(h[:8], 16))
+
+    def base_embedding(s: str, dim: int = 300):
+        rng = get_rng(f"embed::{s}")
+        return [rng.random() for _ in range(dim)]
+
+    def anchor_weights_for_vec(v, top_k=3):
+        names = ["Homer_Iliad", "Homer_Odyssey", "Plato_Rep"]
+        rng = get_rng("anchors")
+        weights = [rng.random() for _ in names]
+        s = sum(weights) or 1.0
+        pairs = list(zip(names, [w / s for w in weights]))
+        pairs.sort(key=lambda x: x[1], reverse=True)
+        return pairs[:top_k]
+
+    def generate_word(seed_key: str = ""):
+        rng = get_rng(seed_key or "fallback")
+        letters = list(CHOSEONG)
+        return "".join(rng.choice(letters) for _ in range(3))
+
+    def make_context(seed_key: str, word: str, anchors, pos_hint: str):
+        labs = ";".join(a for a in anchors)
+        return f"[ctx: lemma={word}; pos={pos_hint}; anchors={labs}]"
+
+
+_SENT_SPLIT = re.compile(r"(?<=[.!?])\s+|\n+")
 
 
 class ZyntalicTranslator:
     def __init__(self, mirror_rate: float = 0.8):
         self.mirror_rate = mirror_rate
-        self._delegate = _WebTranslator(mirror_rate=mirror_rate) if _WebTranslator else None
+        self.lex_map: Dict[str, str] = {}
 
-    def translate_text(self, text: str):
-        if self._delegate:
-            return self._delegate.translate_text(text)
-        # Fallback: mimic web translator contract when delegate missing
-        translated = translate_text(text)
-        return [{"source": text, "target": translated, "anchors": []}]
+    def _tokenize_words(self, s: str) -> List[str]:
+        return re.findall(r"[A-Za-z가-힣]+", s)
 
+    def _pos_hint_for_word(self, zword: str) -> str:
+        return "noun" if any(ch in zword for ch in CHOSEONG) else "verb"
 
-# ---------------------------------------------------------
-# 4. MAIN EXECUTION
-# ---------------------------------------------------------
-if __name__ == "__main__":
-    # A. TRANSLATE A SAMPLE
-    sample_text = """
-    In the beginning, there was silence. The sea whispered to the sky.
-    Truth is a pathless land, yet we walk it with heavy feet.
-    """
-    
-    print("--- ORIGINAL ENGLISH ---")
-    print(sample_text)
-    
-    translated = translate_text(sample_text)
-    
-    print("\n--- ZYNTHALIC TRANSLATION ---")
-    print(translated)
-    
-    # B. GENERATE DICTIONARY
-    print("\n--- ZYNTHALIC DICTIONARY (AUTO-GENERATED) ---")
-    print(f"{'ZYNTHALIC':<15} | {'ENGLISH':<12} | {'ETYMOLOGY'}")
-    print("-" * 70)
-    
-    for eng, data in list(DICTIONARY.items())[:10]: # Show top 10
-        print(f"{data['zyn']:<15} | {eng:<12} | {data['etymology']}")
+    def map_token(self, tok: str) -> str:
+        key = tok.lower()
+        if key in self.lex_map:
+            return self.lex_map[key]
+        z = generate_word(key)
+        self.lex_map[key] = z
+        return z
 
-    # C. EXPORT
-    with open("zynthalic_translation.txt", "w", encoding="utf-8") as f:
-        f.write(translated)
-    
-    with open("zynthalic_dictionary.json", "w", encoding="utf-8") as f:
-        json.dump(DICTIONARY, f, indent=2, ensure_ascii=False)
-        
-    print("\nSaved 'zynthalic_translation.txt' and 'zynthalic_dictionary.json'.")
+    def sentence_to_anchors(self, sent: str, top_k: int = 3) -> List[Tuple[str, float]]:
+        v = base_embedding(sent, dim=300)
+        return anchor_weights_for_vec(v, top_k=top_k)
+
+    def _mirrored_line(self, anchor_names, weights) -> str:
+        try:
+            from zyntalic_core import _choose_motif, TEMPLATES
+
+            rng = get_rng("mirror::" + "|".join(anchor_names))
+            A, B = _choose_motif(rng, anchor_names, weights)
+            t = rng.choice(TEMPLATES)
+            return t.format(A=A, B=B)
+        except Exception:
+            A = anchor_names[0] if anchor_names else "order"
+            B = anchor_names[1] if len(anchor_names) > 1 else "chaos"
+            return f"{A} with {B} returns, then retreats."
+
+    def _plain_line(self, anchor_names, weights) -> str:
+        try:
+            from zyntalic_core import plain_sentence_anchored
+
+            rng = get_rng("plain::" + "|".join(anchor_names))
+            return plain_sentence_anchored(rng, anchor_names, weights)
+        except Exception:
+            return "The path curves gently, and the witness remains."
+
+    def translate_sentence(self, sent: str) -> Dict:
+        """
+        Translate a single English sentence into Zyntalic.
+
+        Behaviour:
+        - Try to parse English into Subject/Object/Verb/Context (S-O-V-C).
+        - Apply Hungarian-style plural & French-style tense marking.
+        - If anything fails, fall back to plain token mapping.
+        """
+        sent = (sent or "").strip()
+        if not sent:
+            return {"source": "", "target": "", "anchors": []}
+
+        anchors = self.sentence_to_anchors(sent, top_k=3)
+        anchor_names = [a for a, _ in anchors]
+        weights = [w for _, w in anchors]
+
+        z_surface = None
+        try:
+            from english_parser import parse_sentence
+            from zyntalic_syntax import to_zyntalic_order
+
+            parsed = parse_sentence(sent)
+            z_surface = to_zyntalic_order(parsed, self.map_token)
+        except Exception:
+            z_surface = None
+
+        if not z_surface:
+            toks = self._tokenize_words(sent)
+            z_words = [self.map_token(t) for t in toks]
+            if z_words:
+                z_surface = " ".join(z_words)
+            else:
+                z_surface = self._plain_line(anchor_names, weights)
+            lemma = z_words[0] if z_words else "??"
+        else:
+            lemma = z_surface.split()[0] if z_surface.split() else "??"
+
+        rng = get_rng("core::" + sent)
+        if rng.random() < self.mirror_rate:
+            core_line = self._mirrored_line(anchor_names, weights)
+        else:
+            core_line = self._plain_line(anchor_names, weights)
+
+        pos_hint = self._pos_hint_for_word(lemma)
+        ctx = make_context(sent, lemma, anchor_names, pos_hint)
+
+        out_sent = f"{z_surface}. {core_line} {ctx}"
+        return {"source": sent, "target": out_sent, "anchors": anchors}
+
+    def translate_text(self, text: str) -> List[Dict]:
+        parts = [p.strip() for p in _SENT_SPLIT.split(text) if p and p.strip()]
+        return [self.translate_sentence(p) for p in parts]
