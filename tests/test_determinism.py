@@ -1,6 +1,10 @@
-cat > tests/test_determinism.py << 'EOF'
+
 import json
-import numpy as np
+def test_imports():
+    import numpy as np
+    importlib.import_module("zyntalic_translator")
+    importlib.import_module("zyntalic_cli")
+    importlib.import_module("zyntalic_core")        
 
 def test_embedding_determinism():
     """Embeddings must be identical across runs."""
