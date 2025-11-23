@@ -1,34 +1,54 @@
 # -*- coding: utf-8 -*-
-import re, random
-from typing import List, Dict, Tuple
+import hashlib
+import re
+from typing import Dict, List, Tuple
 
 try:
     from zyntalic_core import (
-        base_embedding, anchor_weights_for_vec,
-        generate_word, make_context, CHOSEONG
+        CHOSEONG,
+        anchor_weights_for_vec,
+        base_embedding,
+        generate_word,
+        make_context,
     )
+    try:
+        from zyntalic.utils.rng import get_rng
+    except Exception:
+        from utils.rng import get_rng  # type: ignore
 except Exception:
-    import hashlib, random
-    CHOSEONG = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ"
-    def _rng_from(s): 
-        h = int(hashlib.blake2b(s.encode('utf-8'), digest_size=8).hexdigest(), 16)
-        r = random.Random(h); return r
+    import random
+
+    CHOSEONG = "BCDFGHJKLMNPQRSTVWXYZ"
+
+    def get_rng(seed_input: str = "fallback"):
+        h = hashlib.sha256(seed_input.encode("utf-8")).hexdigest()
+        return random.Random(int(h[:8], 16))
+
     def base_embedding(s: str, dim: int = 300):
-        r = _rng_from(s); return [r.random() for _ in range(dim)]
+        rng = get_rng(f"embed::{s}")
+        return [rng.random() for _ in range(dim)]
+
     def anchor_weights_for_vec(v, top_k=3):
-        names = ["Homer_Iliad","Homer_Odyssey","Bible","Plato_Rep","Shakespeare","Dante","Godel","Darwin"]
-        weights = [random.random() for _ in names]
+        names = ["Homer_Iliad", "Homer_Odyssey", "Plato_Rep"]
+        rng = get_rng("anchors")
+        weights = [rng.random() for _ in names]
         s = sum(weights) or 1.0
-        pairs = list(zip(names, [w/s for w in weights]))
+        pairs = list(zip(names, [w / s for w in weights]))
         pairs.sort(key=lambda x: x[1], reverse=True)
         return pairs[:top_k]
-    def generate_word():
-        return "".join(random.choice(CHOSEONG) for _ in range(3))
+
+    def generate_word(seed_key: str = ""):
+        rng = get_rng(seed_key or "fallback")
+        letters = list(CHOSEONG)
+        return "".join(rng.choice(letters) for _ in range(3))
+
     def make_context(lemma, anchors, pos_hint):
-        labs = ";".join(a for a,_ in anchors)
-        return f"⟦ctx: lemma={lemma}; pos≈{pos_hint}; anchors={labs}⟧"
+        labs = ";".join(a for a in anchors)
+        return f"[ctx: lemma={lemma}; pos={pos_hint}; anchors={labs}]"
+
 
 _SENT_SPLIT = re.compile(r"(?<=[.!?])\s+|\n+")
+
 
 class ZyntalicTranslator:
     def __init__(self, mirror_rate: float = 0.8):
@@ -36,7 +56,7 @@ class ZyntalicTranslator:
         self.lex_map: Dict[str, str] = {}
 
     def _tokenize_words(self, s: str) -> List[str]:
-        return re.findall(r"[A-Za-zÀ-ÖØ-öø-ÿ]+", s)
+        return re.findall(r"[A-Za-z�?-�-�~-����-Ǩ]+", s)
 
     def _pos_hint_for_word(self, zword: str) -> str:
         return "noun" if any(ch in zword for ch in CHOSEONG) else "verb"
@@ -45,7 +65,7 @@ class ZyntalicTranslator:
         key = tok.lower()
         if key in self.lex_map:
             return self.lex_map[key]
-        z = generate_word()
+        z = generate_word(key)
         self.lex_map[key] = z
         return z
 
@@ -53,22 +73,25 @@ class ZyntalicTranslator:
         v = base_embedding(sent, dim=300)
         return anchor_weights_for_vec(v, top_k=top_k)
 
-    def _mirrored_line(self, anchors, weights) -> str:
+    def _mirrored_line(self, anchor_names, weights) -> str:
         try:
             from zyntalic_core import _choose_motif, TEMPLATES
-            A, B = _choose_motif(anchors, weights)
-            import random
-            t = random.choice(TEMPLATES)
+
+            rng = get_rng("mirror::" + "|".join(anchor_names))
+            A, B = _choose_motif(rng, anchor_names, weights)
+            t = rng.choice(TEMPLATES)
             return t.format(A=A, B=B)
         except Exception:
-            A = anchors[0][0] if anchors else "order"
-            B = anchors[1][0] if len(anchors) > 1 else "chaos"
+            A = anchor_names[0] if anchor_names else "order"
+            B = anchor_names[1] if len(anchor_names) > 1 else "chaos"
             return f"{A} with {B} returns, then retreats."
 
-    def _plain_line(self, anchors, weights) -> str:
+    def _plain_line(self, anchor_names, weights) -> str:
         try:
             from zyntalic_core import plain_sentence_anchored
-            return plain_sentence_anchored(anchors, weights)
+
+            rng = get_rng("plain::" + "|".join(anchor_names))
+            return plain_sentence_anchored(rng, anchor_names, weights)
         except Exception:
             return "The path curves gently, and the witness remains."
 
@@ -85,11 +108,10 @@ class ZyntalicTranslator:
         if not sent:
             return {"source": "", "target": "", "anchors": []}
 
-        # Anchors at sentence level (Schelling points)
         anchors = self.sentence_to_anchors(sent, top_k=3)
+        anchor_names = [a for a, _ in anchors]
         weights = [w for _, w in anchors]
 
-        # 1) Try new syntax-aware pipeline
         z_surface = None
         try:
             from english_parser import parse_sentence
@@ -100,32 +122,28 @@ class ZyntalicTranslator:
         except Exception:
             z_surface = None
 
-        # 2) Fallback: old behaviour (bag-of-words -> random mapping)
         if not z_surface:
             toks = self._tokenize_words(sent)
             z_words = [self.map_token(t) for t in toks]
             if z_words:
                 z_surface = " ".join(z_words)
             else:
-                z_surface = self._plain_line(list(zip(anchors, weights)), weights)
-            lemma = z_words[0] if z_words else "ø"
+                z_surface = self._plain_line(anchor_names, weights)
+            lemma = z_words[0] if z_words else "??"
         else:
-            # lemma for tooltip / context: first Zyntalic token
-            lemma = z_surface.split()[0] if z_surface.split() else "ø"
+            lemma = z_surface.split()[0] if z_surface.split() else "??"
 
-        # Mirror / plain core line (semantic commentary)
-        import random
-        if random.random() < self.mirror_rate:
-            core_line = self._mirrored_line(list(zip(anchors, weights)), weights)
+        rng = get_rng("core::" + sent)
+        if rng.random() < self.mirror_rate:
+            core_line = self._mirrored_line(anchor_names, weights)
         else:
-            core_line = self._plain_line(list(zip(anchors, weights)), weights)
+            core_line = self._plain_line(anchor_names, weights)
 
         pos_hint = self._pos_hint_for_word(lemma)
-        ctx = make_context(lemma, anchors, pos_hint)
+        ctx = make_context(lemma, anchor_names, pos_hint)
 
         out_sent = f"{z_surface}. {core_line} {ctx}"
         return {"source": sent, "target": out_sent, "anchors": anchors}
-
 
     def translate_text(self, text: str) -> List[Dict]:
         parts = [p.strip() for p in _SENT_SPLIT.split(text) if p and p.strip()]

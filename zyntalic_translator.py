@@ -130,6 +130,26 @@ def translate_text(text):
             
     return "".join(translated_tokens)
 
+# Simple class wrapper for compatibility with web app translator behaviour.
+try:
+    from webapp.translator import ZyntalicTranslator as _WebTranslator
+except Exception:
+    _WebTranslator = None
+
+
+class ZyntalicTranslator:
+    def __init__(self, mirror_rate: float = 0.8):
+        self.mirror_rate = mirror_rate
+        self._delegate = _WebTranslator(mirror_rate=mirror_rate) if _WebTranslator else None
+
+    def translate_text(self, text: str):
+        if self._delegate:
+            return self._delegate.translate_text(text)
+        # Fallback: mimic web translator contract when delegate missing
+        translated = translate_text(text)
+        return [{"source": text, "target": translated, "anchors": []}]
+
+
 # ---------------------------------------------------------
 # 4. MAIN EXECUTION
 # ---------------------------------------------------------

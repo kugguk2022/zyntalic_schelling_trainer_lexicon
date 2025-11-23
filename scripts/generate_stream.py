@@ -11,7 +11,8 @@ def stream_generate(n: int, out_path: str, use_projection: bool = True, dedupe: 
     t0 = time.time()
     with open(out_path, "w", encoding="utf-8") as f:
         for i in range(n):
-            e = generate_entry(W=W)
+            seed = f"stream::{i}"
+            e = generate_entry(seed, W=W)
             if dedupe:
                 h = _h64(e["word"])
                 if h in seen:
