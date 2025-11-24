@@ -2,7 +2,7 @@
 
 import hashlib
 from typing import Literal
-from .zyntalic_core import generate_entry  # your deterministic core
+from zyntalic_core import generate_entry  # your deterministic core
 
 Mode = Literal["hash", "vq"]
 
