@@ -361,7 +361,7 @@ def make_context(seed_key: str, word: str, chosen_anchors: List[str], pos_hint: 
     lemma = lemmatize(word)
     ctx_anchors = "|".join(chosen_anchors)
     han = make_korean_tail(seed_key or lemma)
-    return f"�Y�ctx:han={han}; lemma={lemma}; pos={pos_hint}; anchors={ctx_anchors}�Y�"
+    return f"⟦ctx:han={han}; lemma={lemma}; pos={pos_hint}; anchors={ctx_anchors}⟧"
 
 
 # -------------------- Embeddings --------------------
